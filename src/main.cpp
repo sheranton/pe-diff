@@ -14,6 +14,7 @@
 // 64-bit PE files on any host OS.
 
 #include "pe_format.hpp"
+#include "term.hpp"
 
 #include <algorithm>
 #include <cinttypes>
@@ -257,49 +258,45 @@ struct DiffCounters {
     int total() const { return header_diffs + section_diffs + import_diffs + export_diffs; }
 };
 
+void heading(const char* text) {
+    std::printf("%s%s%s\n", term::bold(), text, term::reset());
+}
+
+std::string hex(std::uint64_t value, int width) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "0x%0*" PRIx64, width, value);
+    return buf;
+}
+
 void diff_headers(const PEInfo& a, const PEInfo& b, DiffCounters& c, bool ignore_ts) {
-    std::printf("== Headers ==\n");
-    bool any = false;
-    if (a.machine != b.machine) {
-        std::printf("  machine:         %s -> %s\n", machine_name(a.machine), machine_name(b.machine));
-        ++c.header_diffs; any = true;
-    }
-    if (!ignore_ts && a.timestamp != b.timestamp) {
-        std::printf("  timestamp:       0x%08lx -> 0x%08lx\n",
-                    static_cast<unsigned long>(a.timestamp),
-                    static_cast<unsigned long>(b.timestamp));
-        ++c.header_diffs; any = true;
-    }
-    if (a.characteristics != b.characteristics) {
-        std::printf("  characteristics: 0x%04x -> 0x%04x\n", a.characteristics, b.characteristics);
-        ++c.header_diffs; any = true;
-    }
-    if (a.subsystem != b.subsystem) {
-        std::printf("  subsystem:       %u -> %u\n", a.subsystem, b.subsystem);
-        ++c.header_diffs; any = true;
-    }
-    if (a.image_base != b.image_base) {
-        std::printf("  image_base:      0x%016" PRIx64 " -> 0x%016" PRIx64 "\n",
-                    a.image_base, b.image_base);
-        ++c.header_diffs; any = true;
-    }
-    if (a.size_of_image != b.size_of_image) {
-        std::printf("  size_of_image:   0x%08lx -> 0x%08lx\n",
-                    static_cast<unsigned long>(a.size_of_image),
-                    static_cast<unsigned long>(b.size_of_image));
-        ++c.header_diffs; any = true;
-    }
-    if (a.entry_point != b.entry_point) {
-        std::printf("  entry_point:     0x%08lx -> 0x%08lx\n",
-                    static_cast<unsigned long>(a.entry_point),
-                    static_cast<unsigned long>(b.entry_point));
-        ++c.header_diffs; any = true;
-    }
-    if (!any) std::printf("  (no changes)\n");
+    heading("== Headers ==");
+    const int before = c.header_diffs;
+    // "  label:   old -> new", with the old value red and the new one green.
+    const auto field = [&](bool differs, const char* label, const std::string& x,
+                           const std::string& y) {
+        if (!differs) return;
+        std::printf("  %-17s%s%s%s -> %s%s%s\n", label, term::red(), x.c_str(), term::reset(),
+                    term::green(), y.c_str(), term::reset());
+        ++c.header_diffs;
+    };
+    field(a.machine != b.machine, "machine:", machine_name(a.machine), machine_name(b.machine));
+    field(!ignore_ts && a.timestamp != b.timestamp, "timestamp:", hex(a.timestamp, 8),
+          hex(b.timestamp, 8));
+    field(a.characteristics != b.characteristics, "characteristics:", hex(a.characteristics, 4),
+          hex(b.characteristics, 4));
+    field(a.subsystem != b.subsystem, "subsystem:", std::to_string(a.subsystem),
+          std::to_string(b.subsystem));
+    field(a.image_base != b.image_base, "image_base:", hex(a.image_base, 16), hex(b.image_base, 16));
+    field(a.size_of_image != b.size_of_image, "size_of_image:", hex(a.size_of_image, 8),
+          hex(b.size_of_image, 8));
+    field(a.entry_point != b.entry_point, "entry_point:", hex(a.entry_point, 8),
+          hex(b.entry_point, 8));
+    if (c.header_diffs == before) std::printf("  %s(no changes)%s\n", term::dim(), term::reset());
 }
 
 void diff_sections(const PEInfo& a, const PEInfo& b, DiffCounters& c) {
-    std::printf("\n== Sections ==\n");
+    std::printf("\n");
+    heading("== Sections ==");
     std::set<std::string> all_names;
     for (const auto& s : a.sections) all_names.insert(s.name);
     for (const auto& s : b.sections) all_names.insert(s.name);
@@ -311,42 +308,43 @@ void diff_sections(const PEInfo& a, const PEInfo& b, DiffCounters& c) {
         auto b_it = std::find_if(b.sections.begin(), b.sections.end(),
                                  [&](const auto& s) { return s.name == n; });
         if (a_it == a.sections.end()) {
-            std::printf("  + %-9s (added, virt_size 0x%lx)\n",
-                        n.c_str(), static_cast<unsigned long>(b_it->virtual_size));
+            std::printf("%s  + %-9s (added, virt_size 0x%lx)%s\n", term::green(),
+                        n.c_str(), static_cast<unsigned long>(b_it->virtual_size), term::reset());
             ++c.section_diffs; any = true;
         } else if (b_it == b.sections.end()) {
-            std::printf("  - %-9s (removed, virt_size 0x%lx)\n",
-                        n.c_str(), static_cast<unsigned long>(a_it->virtual_size));
+            std::printf("%s  - %-9s (removed, virt_size 0x%lx)%s\n", term::red(),
+                        n.c_str(), static_cast<unsigned long>(a_it->virtual_size), term::reset());
             ++c.section_diffs; any = true;
         } else if (a_it->virtual_size != b_it->virtual_size ||
                    a_it->characteristics != b_it->characteristics) {
-            std::printf("  ~ %-9s virt_size 0x%lx -> 0x%lx  chars 0x%08lx -> 0x%08lx\n",
-                        n.c_str(),
+            std::printf("%s  ~ %-9s virt_size 0x%lx -> 0x%lx  chars 0x%08lx -> 0x%08lx%s\n",
+                        term::yellow(), n.c_str(),
                         static_cast<unsigned long>(a_it->virtual_size),
                         static_cast<unsigned long>(b_it->virtual_size),
                         static_cast<unsigned long>(a_it->characteristics),
-                        static_cast<unsigned long>(b_it->characteristics));
+                        static_cast<unsigned long>(b_it->characteristics), term::reset());
             ++c.section_diffs; any = true;
         }
     }
-    if (!any) std::printf("  (no changes)\n");
+    if (!any) std::printf("  %s(no changes)%s\n", term::dim(), term::reset());
 }
 
 void diff_imports(const PEInfo& a, const PEInfo& b, DiffCounters& c) {
-    std::printf("\n== Imports ==\n");
+    std::printf("\n");
+    heading("== Imports ==");
     std::set<std::string> a_dlls(a.imported_dlls.begin(), a.imported_dlls.end());
     std::set<std::string> b_dlls(b.imported_dlls.begin(), b.imported_dlls.end());
 
     bool any = false;
     for (const auto& d : a_dlls) {
         if (!b_dlls.count(d)) {
-            std::printf("  - %s (DLL removed)\n", d.c_str());
+            std::printf("%s  - %s (DLL removed)%s\n", term::red(), d.c_str(), term::reset());
             ++c.import_diffs; any = true;
         }
     }
     for (const auto& d : b_dlls) {
         if (!a_dlls.count(d)) {
-            std::printf("  + %s (DLL added)\n", d.c_str());
+            std::printf("%s  + %s (DLL added)%s\n", term::green(), d.c_str(), term::reset());
             ++c.import_diffs; any = true;
         }
     }
@@ -365,41 +363,55 @@ void diff_imports(const PEInfo& a, const PEInfo& b, DiffCounters& c) {
     std::sort(added.begin(), added.end());
 
     for (const auto& k : removed) {
-        std::printf("    - %s\n", k.c_str());
+        std::printf("%s    - %s%s\n", term::red(), k.c_str(), term::reset());
         ++c.import_diffs; any = true;
     }
     for (const auto& k : added) {
-        std::printf("    + %s\n", k.c_str());
+        std::printf("%s    + %s%s\n", term::green(), k.c_str(), term::reset());
         ++c.import_diffs; any = true;
     }
-    if (!any) std::printf("  (no changes)\n");
+    if (!any) std::printf("  %s(no changes)%s\n", term::dim(), term::reset());
 }
 
 void diff_exports(const PEInfo& a, const PEInfo& b, DiffCounters& c) {
-    std::printf("\n== Exports ==\n");
+    std::printf("\n");
+    heading("== Exports ==");
     std::set<std::string> a_set(a.exports.begin(), a.exports.end());
     std::set<std::string> b_set(b.exports.begin(), b.exports.end());
 
     bool any = false;
     for (const auto& e : a_set) {
-        if (!b_set.count(e)) { std::printf("  - %s\n", e.c_str()); ++c.export_diffs; any = true; }
+        if (!b_set.count(e)) {
+            std::printf("%s  - %s%s\n", term::red(), e.c_str(), term::reset());
+            ++c.export_diffs;
+            any = true;
+        }
     }
     for (const auto& e : b_set) {
-        if (!a_set.count(e)) { std::printf("  + %s\n", e.c_str()); ++c.export_diffs; any = true; }
+        if (!a_set.count(e)) {
+            std::printf("%s  + %s%s\n", term::green(), e.c_str(), term::reset());
+            ++c.export_diffs;
+            any = true;
+        }
     }
-    if (!any) std::printf("  (no changes)\n");
+    if (!any) std::printf("  %s(no changes)%s\n", term::dim(), term::reset());
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
     bool ignore_timestamp = false;
+    bool bad_flag = false;
+    term::Mode color = term::Mode::Auto;
     const char* path_a = nullptr;
     const char* path_b = nullptr;
 
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--ignore-timestamp") == 0 ||
-            std::strcmp(argv[i], "-T") == 0) {
+        const int cf = term::parse_flag(argc, argv, i, color);
+        if (cf != 0) {
+            bad_flag |= cf < 0;
+        } else if (std::strcmp(argv[i], "--ignore-timestamp") == 0 ||
+                   std::strcmp(argv[i], "-T") == 0) {
             ignore_timestamp = true;
         } else if (!path_a) {
             path_a = argv[i];
@@ -408,17 +420,19 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (!path_a || !path_b) {
+    if (!path_a || !path_b || bad_flag) {
         std::fprintf(stderr,
-                     "usage: %s [--ignore-timestamp|-T] <file-a.exe> <file-b.exe>\n",
+                     "usage: %s [--ignore-timestamp|-T] [--color auto|always|never] <file-a.exe> <file-b.exe>\n",
                      argc ? argv[0] : "pe-diff");
         return 2;
     }
+    term::init(color);
 
     const auto a = parse_pe(path_a);
     const auto b = parse_pe(path_b);
 
-    std::printf("pe-diff\n  A: %s\n  B: %s\n\n", path_a, path_b);
+    std::printf("%spe-diff%s\n  A: %s%s%s\n  B: %s%s%s\n\n", term::bold(), term::reset(),
+                term::red(), path_a, term::reset(), term::green(), path_b, term::reset());
 
     DiffCounters c;
     diff_headers(a, b, c, ignore_timestamp);
@@ -426,9 +440,10 @@ int main(int argc, char** argv) {
     diff_imports(a, b, c);
     diff_exports(a, b, c);
 
-    std::printf("\n== Summary ==\n");
-    std::printf("  %d header, %d section, %d import, %d export change(s)\n",
-                c.header_diffs, c.section_diffs, c.import_diffs, c.export_diffs);
+    std::printf("\n");
+    heading("== Summary ==");
+    std::printf("  %s%d header, %d section, %d import, %d export change(s)%s\n", term::bold(),
+                c.header_diffs, c.section_diffs, c.import_diffs, c.export_diffs, term::reset());
 
     return c.total() == 0 ? 0 : 1;
 }

@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="430" viewBox="0 0 1200 430" role="img" aria-labelledby="t d">
+  <title id="t">One source change, five structural changes</title>
+  <desc id="d">Adding sample_ticks() to the fixture adds an export and an import and grows .text and .rdata; pe-diff reports each.</desc>
+  <style>
+    text { font-family: ui-monospace, 'JetBrains Mono', 'Cascadia Code', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace; }
+    .flow { fill: none; stroke-dasharray: 2 10; stroke-linecap: round; animation: flow 1.3s linear infinite; }
+    @keyframes flow { to { stroke-dashoffset: -24; } }
+    .fade { opacity: 0; animation: fade 0.6s ease-out forwards; }
+    @keyframes fade { to { opacity: 1; } }
+    
+    @media (prefers-reduced-motion: reduce) { .flow { animation: none; } .fade { animation: none; opacity: 1; } .anim { animation: none !important; } }
+  </style>
+  <defs>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1" fill="#1c2128"/></pattern>
+    <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#30363d" stroke-width="2"/></pattern>
+    <linearGradient id="edge" x1="0" x2="1"><stop offset="0" stop-color="#ff7b72"/><stop offset="0.6" stop-color="#ff7b72" stop-opacity="0.35"/><stop offset="1" stop-color="#ff7b72" stop-opacity="0"/></linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8b949e"/></marker>
+    <clipPath id="card"><rect width="1200" height="430" rx="16"/></clipPath>
+  </defs>
+  <g clip-path="url(#card)">
+    <rect width="1200" height="430" fill="#0d1117"/>
+    <rect width="1200" height="430" fill="url(#dots)"/>
+    <rect width="1200" height="3" fill="url(#edge)"/>
+  </g>
+  <rect x="0.75" y="0.75" width="1198.5" height="428.5" rx="15.5" fill="none" stroke="#30363d" stroke-width="1.5"/>
+  <text x="40" y="48" font-size="13" letter-spacing="2" fill="#ff7b72">ONE SOURCE CHANGE, FIVE STRUCTURAL CHANGES</text>
+  <text x="40" y="76" font-size="13" fill="#8b949e" text-anchor="start" xml:space="preserve">sample64-v2.dll is sample64.dll plus one exported function. pe-diff -T reports exactly these changes and exits 1.</text>
+  <rect x="40" y="120" width="380" height="150" rx="8" fill="#161b22" stroke="#7ee787"/>
+  <rect x="40" y="120" width="380" height="28" rx="8" fill="#7ee787" fill-opacity="0.14"/>
+  <text x="52" y="139" font-size="12" fill="#e6edf3" text-anchor="start" font-weight="700" xml:space="preserve">+ added in v2 (sample.cpp)</text>
+  <text x="58" y="176" font-size="12.5" fill="#c9d1d9" text-anchor="start" xml:space="preserve">extern &quot;C&quot; __declspec(dllexport)</text>
+  <text x="58" y="198" font-size="12.5" fill="#7ee787" text-anchor="start" xml:space="preserve">unsigned long sample_ticks() {</text>
+  <text x="58" y="220" font-size="12.5" fill="#7ee787" text-anchor="start" xml:space="preserve">    return GetTickCount();</text>
+  <text x="58" y="242" font-size="12.5" fill="#7ee787" text-anchor="start" xml:space="preserve">}</text>
+  <rect x="560" y="104" width="600" height="46" rx="8" fill="#161b22" stroke="#7ee787"/>
+  <text x="576" y="124" font-size="12" fill="#7ee787" text-anchor="start" font-weight="700" xml:space="preserve">+ export</text>
+  <text x="710" y="124" font-size="12.5" fill="#e6edf3" text-anchor="start" xml:space="preserve">sample_ticks</text>
+  <text x="576" y="141" font-size="11" fill="#8b949e" text-anchor="start" xml:space="preserve">the new function is exported by name</text>
+  <path d="M420,195 C490,195 490,127 556,127" fill="none" stroke="#8b949e" stroke-opacity="0.45" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <path class="flow" style="animation-delay: -0.00s" d="M420,195 C490,195 490,127 556,127" stroke="#7ee787" stroke-width="2"/>
+  <rect x="560" y="162" width="600" height="46" rx="8" fill="#161b22" stroke="#7ee787"/>
+  <text x="576" y="182" font-size="12" fill="#7ee787" text-anchor="start" font-weight="700" xml:space="preserve">+ import</text>
+  <text x="710" y="182" font-size="12.5" fill="#e6edf3" text-anchor="start" xml:space="preserve">KERNEL32.dll::GetTickCount</text>
+  <text x="576" y="199" font-size="11" fill="#8b949e" text-anchor="start" xml:space="preserve">the function it calls</text>
+  <path d="M420,195 C490,195 490,185 556,185" fill="none" stroke="#8b949e" stroke-opacity="0.45" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <path class="flow" style="animation-delay: -0.30s" d="M420,195 C490,195 490,185 556,185" stroke="#7ee787" stroke-width="2"/>
+  <rect x="560" y="220" width="600" height="46" rx="8" fill="#161b22" stroke="#e3b341"/>
+  <text x="576" y="240" font-size="12" fill="#e3b341" text-anchor="start" font-weight="700" xml:space="preserve">~ .text</text>
+  <text x="710" y="240" font-size="12.5" fill="#e6edf3" text-anchor="start" xml:space="preserve">0x1358 → 0x1368</text>
+  <text x="576" y="257" font-size="11" fill="#8b949e" text-anchor="start" xml:space="preserve">+0x10 bytes of code</text>
+  <path d="M420,195 C490,195 490,243 556,243" fill="none" stroke="#8b949e" stroke-opacity="0.45" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <path class="flow" style="animation-delay: -0.60s" d="M420,195 C490,195 490,243 556,243" stroke="#e3b341" stroke-width="2"/>
+  <rect x="560" y="278" width="600" height="46" rx="8" fill="#161b22" stroke="#e3b341"/>
+  <text x="576" y="298" font-size="12" fill="#e3b341" text-anchor="start" font-weight="700" xml:space="preserve">~ .rdata</text>
+  <text x="710" y="298" font-size="12.5" fill="#e6edf3" text-anchor="start" xml:space="preserve">0x183c → 0x186c</text>
+  <text x="576" y="315" font-size="11" fill="#8b949e" text-anchor="start" xml:space="preserve">+0x30 for the new import and export entries</text>
+  <path d="M420,195 C490,195 490,301 556,301" fill="none" stroke="#8b949e" stroke-opacity="0.45" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <path class="flow" style="animation-delay: -0.90s" d="M420,195 C490,195 490,301 556,301" stroke="#e3b341" stroke-width="2"/>
+  <rect x="560" y="336" width="600" height="46" rx="8" fill="#161b22" stroke="#e3b341"/>
+  <text x="576" y="356" font-size="12" fill="#e3b341" text-anchor="start" font-weight="700" xml:space="preserve">~ entry point</text>
+  <text x="710" y="356" font-size="12.5" fill="#e6edf3" text-anchor="start" xml:space="preserve">0x177c → 0x178c</text>
+  <text x="576" y="373" font-size="11" fill="#8b949e" text-anchor="start" xml:space="preserve">CRT startup code shifted by the new function</text>
+  <path d="M420,195 C490,195 490,359 556,359" fill="none" stroke="#8b949e" stroke-opacity="0.45" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <path class="flow" style="animation-delay: -1.20s" d="M420,195 C490,195 490,359 556,359" stroke="#e3b341" stroke-width="2"/>
+  <text x="40" y="330" font-size="12" fill="#8b949e" text-anchor="start" xml:space="preserve">The section and header changes are side effects that a</text>
+  <text x="40" y="348" font-size="12" fill="#8b949e" text-anchor="start" xml:space="preserve">byte-level diff would bury under thousands of shifted</text>
+  <text x="40" y="366" font-size="12" fill="#8b949e" text-anchor="start" xml:space="preserve">addresses; pe-diff shows them as five lines.</text>
+</svg>

@@ -16,6 +16,10 @@
 
 `pe-diff` compares two Portable Executable files and reports what changed in their structure: headers, sections, imported DLLs and functions, and exports. Byte-level diffs drown in noise from addresses that shift with every rebuild; `pe-diff` shows the changes the loader and the linker care about. It exits non-zero when anything differs, so it can gate a CI pipeline.
 
+<p align="center">
+  <img src="docs/demo.svg" width="640" alt="Animated terminal demo: pe-diff comparing the two fixture DLLs in color, exit status 1">
+</p>
+
 ## Use cases
 
 - **Patch analysis:** see what an update changed in a binary before reversing the code.
@@ -52,6 +56,14 @@ $ echo $?
 1
 ```
 
+## Why these five changes
+
+<p align="center">
+  <img src="docs/how-it-works.svg" width="100%" alt="One added function in the source leads to an added export, an added import, larger .text and .rdata sections and a moved entry point">
+</p>
+
+The v2 fixture differs from v1 by one function. pe-diff reports its direct effects (a new export and a new import) and its side effects (two sections grow and the entry point moves), each as one line.
+
 ## Install
 
 Download a prebuilt binary for Windows x64, Linux x64 (statically linked) or macOS arm64 from the [latest release](https://github.com/td185721/pe-diff/releases/latest), or build from source with CMake 3.15+ and any C++17 compiler:
@@ -65,12 +77,13 @@ ctest --test-dir build -C Release      # optional: run the test suite
 ## Usage
 
 ```text
-pe-diff [--ignore-timestamp|-T] <old.exe|old.dll> <new.exe|new.dll>
+pe-diff [--ignore-timestamp|-T] [--color auto|always|never] <old.exe|old.dll> <new.exe|new.dll>
 ```
 
 | Flag | Effect |
 |---|---|
 | `--ignore-timestamp`, `-T` | Skip `TimeDateStamp` in the header comparison. Two legitimate builds almost always differ there. |
+| `--color WHEN` | `auto` (default) colors added lines green, removed lines red and changed lines yellow, only on a terminal; `always` and `never` force it. Setting `NO_COLOR` turns colors off. |
 
 | Exit status | Meaning |
 |---|---|
@@ -101,7 +114,7 @@ Both inputs are parsed with bounds-checked reads; a malformed file is reported w
 
 ## Testing
 
-`ctest` runs golden-file tests on the fixture DLLs: identical inputs, the v1 to v2 change with and without `-T`, a missing file and a usage error, checking both output and exit status. CI runs them on Windows (MSVC), Linux (GCC) and macOS (Clang), and cross-builds with MinGW-w64.
+`ctest` runs golden-file tests on the fixture DLLs: identical inputs, the v1 to v2 change with and without `-T`, colored output, a missing file and usage errors, checking both output and exit status. CI runs them on Windows (MSVC), Linux (GCC) and macOS (Clang), and cross-builds with MinGW-w64.
 
 ## See also
 

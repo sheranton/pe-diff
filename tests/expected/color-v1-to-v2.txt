@@ -1,0 +1,19 @@
+[1mpe-diff[0m
+  A: [31msample64.dll[0m
+  B: [32msample64-v2.dll[0m
+
+[1m== Headers ==[0m
+  entry_point:     [31m0x0000177c[0m -> [32m0x0000178c[0m
+
+[1m== Sections ==[0m
+[33m  ~ .rdata    virt_size 0x183c -> 0x186c  chars 0x40000040 -> 0x40000040[0m
+[33m  ~ .text     virt_size 0x1358 -> 0x1368  chars 0x60000020 -> 0x60000020[0m
+
+[1m== Imports ==[0m
+[32m    + KERNEL32.dll::GetTickCount[0m
+
+[1m== Exports ==[0m
+[32m  + sample_ticks[0m
+
+[1m== Summary ==[0m
+  [1m1 header, 2 section, 1 import, 1 export change(s)[0m
