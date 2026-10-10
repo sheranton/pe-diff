@@ -1,0 +1,20 @@
+pe-diff
+  A: sample64.dll
+  B: sample64-v2.dll
+
+== Headers ==
+  timestamp:       0xe452c1a9 -> 0x9799db6c
+  entry_point:     0x0000177c -> 0x0000178c
+
+== Sections ==
+  ~ .rdata    virt_size 0x183c -> 0x186c  chars 0x40000040 -> 0x40000040
+  ~ .text     virt_size 0x1358 -> 0x1368  chars 0x60000020 -> 0x60000020
+
+== Imports ==
+    + KERNEL32.dll::GetTickCount
+
+== Exports ==
+  + sample_ticks
+
+== Summary ==
+  2 header, 2 section, 1 import, 1 export change(s)

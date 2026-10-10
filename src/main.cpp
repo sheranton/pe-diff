@@ -10,9 +10,10 @@
 //   1 — differences found
 //   2 — input error (missing file, malformed PE)
 //
-// Build: CMake 3.15+, MSVC or MinGW-w64 (C++17). Handles 32- and 64-bit PE.
+// Build: CMake 3.15+, C++17 (MSVC, MinGW-w64, GCC or Clang). Handles 32- and
+// 64-bit PE files on any host OS.
 
-#include <windows.h>
+#include "pe_format.hpp"
 
 #include <algorithm>
 #include <cinttypes>
@@ -83,26 +84,38 @@ const char* machine_name(WORD machine) {
     }
 }
 
-std::optional<std::size_t> rva_to_offset(
-    const PEInfo& info, const std::vector<unsigned char>& image, DWORD rva) {
-    for (const auto& s : info.sections) {
+// Returns `count` consecutive T at `offset`, or exits with the input-error
+// status if any of them would lie outside the file.
+template <typename T>
+const T* at(const std::vector<unsigned char>& image, std::size_t offset,
+            std::size_t count = 1) {
+    if (offset > image.size() || count > (image.size() - offset) / sizeof(T)) {
+        std::fprintf(stderr, "error: offset 0x%zx exceeds file size (malformed PE?)\n", offset);
+        std::exit(2);
+    }
+    return reinterpret_cast<const T*>(image.data() + offset);
+}
+
+// NUL-terminated string at `offset`, cut off at the end of the file if the
+// terminator is missing.
+std::string cstr_at(const std::vector<unsigned char>& image, std::size_t offset) {
+    std::string out;
+    for (std::size_t i = offset; i < image.size() && image[i] != 0; ++i) {
+        out.push_back(static_cast<char>(image[i]));
+    }
+    return out;
+}
+
+struct RawSection {
+    DWORD virtual_address;
+    DWORD virtual_size;
+    DWORD raw_offset;
+};
+
+std::optional<std::size_t> rva_to_offset(const std::vector<RawSection>& sections, DWORD rva) {
+    for (const auto& s : sections) {
         if (rva >= s.virtual_address && rva < s.virtual_address + s.virtual_size) {
-            const auto off = (rva - s.virtual_address);
-            // Find raw offset for this section by locating the matching section
-            // header in the raw bytes. We stored virtual_address but not raw
-            // offset; re-parse quickly.
-            const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(image.data());
-            const auto nt_off = dos->e_lfanew + sizeof(DWORD);
-            const auto* fh = reinterpret_cast<const IMAGE_FILE_HEADER*>(
-                image.data() + nt_off);
-            const auto sec_off = nt_off + sizeof(IMAGE_FILE_HEADER) + fh->SizeOfOptionalHeader;
-            const auto* raw_sections = reinterpret_cast<const IMAGE_SECTION_HEADER*>(
-                image.data() + sec_off);
-            for (WORD i = 0; i < fh->NumberOfSections; ++i) {
-                if (raw_sections[i].VirtualAddress == s.virtual_address) {
-                    return raw_sections[i].PointerToRawData + off;
-                }
-            }
+            return static_cast<std::size_t>(s.raw_offset) + (rva - s.virtual_address);
         }
     }
     return std::nullopt;
@@ -117,34 +130,30 @@ PEInfo parse_pe(const std::string& path) {
         std::fprintf(stderr, "error: '%s' too small\n", path.c_str());
         std::exit(2);
     }
-    const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(image.data());
+    const auto* dos = at<IMAGE_DOS_HEADER>(image, 0);
     if (dos->e_magic != IMAGE_DOS_SIGNATURE) {
         std::fprintf(stderr, "error: '%s' not a PE file\n", path.c_str());
         std::exit(2);
     }
 
-    const auto nt_off = dos->e_lfanew;
-    const auto* sig = reinterpret_cast<const DWORD*>(image.data() + nt_off);
-    if (*sig != IMAGE_NT_SIGNATURE) {
+    const auto nt_off = static_cast<std::size_t>(static_cast<DWORD>(dos->e_lfanew));
+    if (*at<DWORD>(image, nt_off) != IMAGE_NT_SIGNATURE) {
         std::fprintf(stderr, "error: '%s' missing PE signature\n", path.c_str());
         std::exit(2);
     }
-    const auto* fh = reinterpret_cast<const IMAGE_FILE_HEADER*>(
-        image.data() + nt_off + sizeof(DWORD));
+    const auto* fh = at<IMAGE_FILE_HEADER>(image, nt_off + sizeof(DWORD));
     info.machine         = fh->Machine;
     info.timestamp       = fh->TimeDateStamp;
     info.characteristics = fh->Characteristics;
 
     const auto opt_off = nt_off + sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER);
-    const auto* magic = reinterpret_cast<const WORD*>(image.data() + opt_off);
-    info.is_64 = (*magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC);
+    info.is_64 = (*at<WORD>(image, opt_off) == IMAGE_NT_OPTIONAL_HDR64_MAGIC);
 
     DWORD import_rva = 0;
     DWORD export_rva = 0;
 
     if (info.is_64) {
-        const auto* oh = reinterpret_cast<const IMAGE_OPTIONAL_HEADER64*>(
-            image.data() + opt_off);
+        const auto* oh = at<IMAGE_OPTIONAL_HEADER64>(image, opt_off);
         info.subsystem     = oh->Subsystem;
         info.image_base    = oh->ImageBase;
         info.size_of_image = oh->SizeOfImage;
@@ -152,8 +161,7 @@ PEInfo parse_pe(const std::string& path) {
         import_rva = oh->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
         export_rva = oh->DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
     } else {
-        const auto* oh = reinterpret_cast<const IMAGE_OPTIONAL_HEADER32*>(
-            image.data() + opt_off);
+        const auto* oh = at<IMAGE_OPTIONAL_HEADER32>(image, opt_off);
         info.subsystem     = oh->Subsystem;
         info.image_base    = oh->ImageBase;
         info.size_of_image = oh->SizeOfImage;
@@ -162,8 +170,9 @@ PEInfo parse_pe(const std::string& path) {
         export_rva = oh->DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
     }
 
-    const auto* sections = reinterpret_cast<const IMAGE_SECTION_HEADER*>(
-        image.data() + opt_off + fh->SizeOfOptionalHeader);
+    const auto* sections = at<IMAGE_SECTION_HEADER>(
+        image, opt_off + fh->SizeOfOptionalHeader, fh->NumberOfSections);
+    std::vector<RawSection> raw;
     for (WORD i = 0; i < fh->NumberOfSections; ++i) {
         PEInfo::Section s;
         char name[9] = {};
@@ -174,59 +183,45 @@ PEInfo parse_pe(const std::string& path) {
         s.raw_size        = sections[i].SizeOfRawData;
         s.characteristics = sections[i].Characteristics;
         info.sections.push_back(std::move(s));
+        raw.push_back({sections[i].VirtualAddress, sections[i].Misc.VirtualSize,
+                       sections[i].PointerToRawData});
     }
 
     // Imports
     if (import_rva) {
-        if (const auto off = rva_to_offset(info, image, import_rva)) {
-            const auto* desc = reinterpret_cast<const IMAGE_IMPORT_DESCRIPTOR*>(
-                image.data() + *off);
-            for (std::size_t i = 0; desc[i].Name; ++i) {
-                const auto name_off = rva_to_offset(info, image, desc[i].Name);
+        if (const auto off = rva_to_offset(raw, import_rva)) {
+            for (std::size_t i = 0;; ++i) {
+                const auto& desc = *at<IMAGE_IMPORT_DESCRIPTOR>(
+                    image, *off + i * sizeof(IMAGE_IMPORT_DESCRIPTOR));
+                if (!desc.Name) break;
+                const auto name_off = rva_to_offset(raw, desc.Name);
                 if (!name_off) continue;
-                const char* dll_name = reinterpret_cast<const char*>(image.data() + *name_off);
-                info.imported_dlls.emplace_back(dll_name);
+                const auto dll_name = cstr_at(image, *name_off);
+                info.imported_dlls.push_back(dll_name);
 
-                const auto thunk_rva = desc[i].OriginalFirstThunk ? desc[i].OriginalFirstThunk
-                                                                  : desc[i].FirstThunk;
-                const auto thunk_off = rva_to_offset(info, image, thunk_rva);
+                const auto thunk_rva = desc.OriginalFirstThunk ? desc.OriginalFirstThunk
+                                                               : desc.FirstThunk;
+                const auto thunk_off = rva_to_offset(raw, thunk_rva);
                 if (!thunk_off) continue;
 
-                if (info.is_64) {
-                    const auto* thunks = reinterpret_cast<const ULONGLONG*>(
-                        image.data() + *thunk_off);
-                    for (std::size_t j = 0; thunks[j]; ++j) {
-                        ImportedFn fn;
-                        fn.dll = dll_name;
-                        if (thunks[j] & 0x8000000000000000ULL) {
-                            fn.ordinal = static_cast<std::uint16_t>(thunks[j] & 0xffff);
-                        } else {
-                            const auto hint_off = rva_to_offset(
-                                info, image, static_cast<DWORD>(thunks[j]));
-                            if (hint_off && *hint_off + 2 < image.size()) {
-                                fn.name = reinterpret_cast<const char*>(
-                                    image.data() + *hint_off + 2);
-                            }
+                const std::size_t thunk_size = info.is_64 ? sizeof(ULONGLONG) : sizeof(DWORD);
+                const ULONGLONG ordinal_flag = info.is_64 ? 0x8000000000000000ULL : 0x80000000ULL;
+                for (std::size_t j = 0;; ++j) {
+                    const auto thunk_pos = *thunk_off + j * thunk_size;
+                    const ULONGLONG thunk = info.is_64 ? *at<ULONGLONG>(image, thunk_pos)
+                                                       : *at<DWORD>(image, thunk_pos);
+                    if (!thunk) break;
+                    ImportedFn fn;
+                    fn.dll = dll_name;
+                    if (thunk & ordinal_flag) {
+                        fn.ordinal = static_cast<std::uint16_t>(thunk & 0xffff);
+                    } else {
+                        const auto hint_off = rva_to_offset(raw, static_cast<DWORD>(thunk));
+                        if (hint_off && *hint_off + 2 < image.size()) {
+                            fn.name = cstr_at(image, *hint_off + 2);
                         }
-                        info.imported_fns.push_back(std::move(fn));
                     }
-                } else {
-                    const auto* thunks = reinterpret_cast<const DWORD*>(
-                        image.data() + *thunk_off);
-                    for (std::size_t j = 0; thunks[j]; ++j) {
-                        ImportedFn fn;
-                        fn.dll = dll_name;
-                        if (thunks[j] & 0x80000000U) {
-                            fn.ordinal = static_cast<std::uint16_t>(thunks[j] & 0xffff);
-                        } else {
-                            const auto hint_off = rva_to_offset(info, image, thunks[j]);
-                            if (hint_off && *hint_off + 2 < image.size()) {
-                                fn.name = reinterpret_cast<const char*>(
-                                    image.data() + *hint_off + 2);
-                            }
-                        }
-                        info.imported_fns.push_back(std::move(fn));
-                    }
+                    info.imported_fns.push_back(std::move(fn));
                 }
             }
         }
@@ -234,17 +229,15 @@ PEInfo parse_pe(const std::string& path) {
 
     // Exports
     if (export_rva) {
-        if (const auto off = rva_to_offset(info, image, export_rva)) {
-            const auto* dir = reinterpret_cast<const IMAGE_EXPORT_DIRECTORY*>(
-                image.data() + *off);
-            const auto name_table_off = rva_to_offset(info, image, dir->AddressOfNames);
+        if (const auto off = rva_to_offset(raw, export_rva)) {
+            const auto* dir = at<IMAGE_EXPORT_DIRECTORY>(image, *off);
+            const auto name_table_off = rva_to_offset(raw, dir->AddressOfNames);
             if (name_table_off) {
-                const auto* name_rvas = reinterpret_cast<const DWORD*>(
-                    image.data() + *name_table_off);
+                const auto* name_rvas = at<DWORD>(image, *name_table_off, dir->NumberOfNames);
                 for (DWORD i = 0; i < dir->NumberOfNames; ++i) {
-                    const auto n_off = rva_to_offset(info, image, name_rvas[i]);
+                    const auto n_off = rva_to_offset(raw, name_rvas[i]);
                     if (!n_off) continue;
-                    info.exports.emplace_back(reinterpret_cast<const char*>(image.data() + *n_off));
+                    info.exports.push_back(cstr_at(image, *n_off));
                 }
             }
         }

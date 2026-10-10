@@ -1,124 +1,112 @@
-# pe-diff
+<p align="center">
+  <img src="docs/banner.svg" width="100%" alt="pe-diff: what changed between two builds, at the level the loader sees it">
+</p>
 
-A structural diff tool for Portable Executable files. Takes two `.exe`
-or `.dll` paths and prints what changed between them at the header,
-section, import, and export level.
+<p align="center">
+  <a href="https://github.com/td185721/pe-diff/actions/workflows/ci.yml"><img src="https://github.com/td185721/pe-diff/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/td185721/pe-diff/releases/latest"><img src="https://img.shields.io/github/v/release/td185721/pe-diff?color=ff7b72" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white" alt="C++17">
+  <img src="https://img.shields.io/badge/runs%20on-Windows%20%7C%20Linux%20%7C%20macOS-30363d" alt="Runs on Windows, Linux and macOS">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+</p>
 
-Natural companion to [pe-walker](https://github.com/td185721/pe-walker)
-— that tool inspects a single binary; this one tells you what moved
-between two of them.
+<p align="center">
+  <sub><b>Toolkit:</b> <a href="https://github.com/td185721/pe-walker">pe-walker</a> · <b>pe-diff</b> · <a href="https://github.com/td185721/rtti-dump">rtti-dump</a> · <a href="https://github.com/td185721/vtable-dump">vtable-dump</a> · <a href="https://github.com/td185721/pattern-scan">pattern-scan</a> · <a href="https://github.com/td185721/unwind-map">unwind-map</a></sub>
+</p>
+
+`pe-diff` compares two Portable Executable files and reports what changed in their structure: headers, sections, imported DLLs and functions, and exports. Byte-level diffs drown in noise from addresses that shift with every rebuild; `pe-diff` shows the changes the loader and the linker care about. It exits non-zero when anything differs, so it can gate a CI pipeline.
 
 ## Use cases
 
-- Check what changed between two versions of the same binary (patch
-  diff).
-- Verify a build is byte-structurally identical to a reference.
-- Spot added or removed library dependencies without reading full
-  dumpbin output.
-- CI check: fail the pipeline if a release build gains an unexpected
-  import.
+- **Patch analysis:** see what an update changed in a binary before reversing the code.
+- **Dependency drift:** catch a release build that gains an unexpected DLL or API import.
+- **Reproducibility:** confirm two builds are structurally identical.
+- **Supply-chain checks:** fail a pipeline when an artifact's exports or imports change unexpectedly.
 
-## Build
+## Example
 
-Requires CMake 3.15+ and either MSVC or MinGW-w64 with C++17.
+Real output comparing the two test fixtures in [`tests/fixtures`](tests/fixtures). The v2 build adds one exported function, `sample_ticks`, which calls `GetTickCount`:
 
-```powershell
-cmake -S . -B build
-cmake --build build --config Release
+```console
+$ pe-diff -T sample64.dll sample64-v2.dll
+pe-diff
+  A: sample64.dll
+  B: sample64-v2.dll
+
+== Headers ==
+  entry_point:     0x0000177c -> 0x0000178c
+
+== Sections ==
+  ~ .rdata    virt_size 0x183c -> 0x186c  chars 0x40000040 -> 0x40000040
+  ~ .text     virt_size 0x1358 -> 0x1368  chars 0x60000020 -> 0x60000020
+
+== Imports ==
+    + KERNEL32.dll::GetTickCount
+
+== Exports ==
+  + sample_ticks
+
+== Summary ==
+  1 header, 2 section, 1 import, 1 export change(s)
+$ echo $?
+1
 ```
 
-Produces `build/Release/pe-diff.exe` (MSVC) or `build/pe-diff.exe`
-(MinGW).
+## Install
+
+Download a prebuilt binary for Windows x64, Linux x64 (statically linked) or macOS arm64 from the [latest release](https://github.com/td185721/pe-diff/releases/latest), or build from source with CMake 3.15+ and any C++17 compiler:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+ctest --test-dir build -C Release      # optional: run the test suite
+```
 
 ## Usage
 
-```powershell
-pe-diff.exe old.dll new.dll
-pe-diff.exe --ignore-timestamp old.dll new.dll
+```text
+pe-diff [--ignore-timestamp|-T] <old.exe|old.dll> <new.exe|new.dll>
 ```
 
-### Flags
+| Flag | Effect |
+|---|---|
+| `--ignore-timestamp`, `-T` | Skip `TimeDateStamp` in the header comparison. Two legitimate builds almost always differ there. |
 
-| flag | effect |
-|------|--------|
-| `--ignore-timestamp`, `-T` | skip the TimeDateStamp field in the header diff. Useful when both builds are legitimate but produced at different times (which is almost always the case for a patch comparison). |
+| Exit status | Meaning |
+|---|---|
+| `0` | The files are structurally identical. |
+| `1` | At least one difference was found. |
+| `2` | Input error: missing file, or a malformed or truncated PE. |
 
-### Exit codes
+Use it as a gate in a CI pipeline:
 
-| code | meaning |
-|------|---------|
-| 0 | files are structurally identical |
-| 1 | one or more differences found |
-| 2 | input error (missing file, malformed PE) |
-
-The non-zero-on-difference exit is suitable for use in a shell pipeline
-or CI check.
+```sh
+pe-diff -T baseline/app.exe build/app.exe || echo "structure changed, review the diff above"
+```
 
 ## What it compares
 
-**Headers**
-- Machine (x86 / x64 / ARM64)
-- TimeDateStamp (unless `-T`)
-- File characteristics
-- Subsystem
-- Image base
-- Size of image
-- Entry point RVA
+| Area | Compared |
+|---|---|
+| Headers | machine, timestamp (unless `-T`), characteristics, subsystem, image base, size of image, entry point |
+| Sections | added and removed sections, virtual size, characteristics |
+| Imports | added and removed DLLs, and functions as `DLL::name` or `DLL::#ordinal` |
+| Exports | added and removed names |
 
-**Sections**
-- Added / removed sections (by name)
-- Virtual size changes
-- Characteristics flag changes
+It does not diff section contents byte by byte, or compare resources, relocations, TLS callbacks, the debug directory or signatures. For byte-level changes inside a section, pair it with a hex or binary diff tool.
 
-**Imports**
-- Added / removed DLL dependencies
-- Added / removed function imports (by `DLL::name` or `DLL::#ordinal`)
+## Robustness
 
-**Exports**
-- Added / removed exported function names
+Both inputs are parsed with bounds-checked reads; a malformed file is reported with exit status `2` instead of crashing. When that parser was hardened, the old and new builds were run on 300 deliberately corrupted DLLs. The old build crashed on 92 of them and the new one on none. On 230 comparisons of real `System32` and `SysWOW64` binaries, the output stayed byte-for-byte identical.
 
-## What it doesn't compare (yet)
+## Testing
 
-- Byte-for-byte content inside each section (treats them as opaque)
-- Resource directory tree (`.rsrc`)
-- Relocations (`.reloc`)
-- TLS callbacks
-- Debug directory contents
-- Digital signature contents
+`ctest` runs golden-file tests on the fixture DLLs: identical inputs, the v1 to v2 change with and without `-T`, a missing file and a usage error, checking both output and exit status. CI runs them on Windows (MSVC), Linux (GCC) and macOS (Clang), and cross-builds with MinGW-w64.
 
-For byte-level section diffing, pair the output with a hex diff tool
-(`fc /b`, `cmp`, `diffoscope`) on specific sections identified here.
+## See also
 
-## Example output
-
-```
-pe-diff
-  A: C:\Windows\System32\notepad.exe
-  B: C:\Windows\SysWOW64\notepad.exe
-
-== Headers ==
-  machine:         x64 -> x86
-  timestamp:       0x112f10a4 -> 0x1a2e3c7f
-  image_base:      0x0000000140000000 -> 0x0000000001000000
-  size_of_image:   0x0005a000 -> 0x00047000
-  entry_point:     0x000019c0 -> 0x00005f30
-
-== Sections ==
-  ~ .text     virt_size 0x267e2 -> 0x1f1a4  chars 0x60000020 -> 0x60000020
-  ~ .rdata    virt_size 0xa6c8 -> 0x8bc0    chars 0x40000040 -> 0x40000040
-  ...
-
-== Imports ==
-    - KERNEL32.dll::SetFilePointerEx
-    + KERNEL32.dll::SetFilePointer
-
-== Exports ==
-  (no changes)
-
-== Summary ==
-  5 header, 7 section, 2 import, 0 export change(s)
-```
+- [pe-walker](https://github.com/td185721/pe-walker) shows the full structure of a single binary.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
