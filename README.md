@@ -3,15 +3,15 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/td185721/pe-diff/actions/workflows/ci.yml"><img src="https://github.com/td185721/pe-diff/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/td185721/pe-diff/releases/latest"><img src="https://img.shields.io/github/v/release/td185721/pe-diff?color=ff7b72" alt="Latest release"></a>
+  <a href="https://github.com/sheranton/pe-diff/actions/workflows/ci.yml"><img src="https://github.com/sheranton/pe-diff/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/sheranton/pe-diff/releases/latest"><img src="https://img.shields.io/github/v/release/sheranton/pe-diff?color=ff7b72" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white" alt="C++17">
   <img src="https://img.shields.io/badge/runs%20on-Windows%20%7C%20Linux%20%7C%20macOS-30363d" alt="Runs on Windows, Linux and macOS">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
 </p>
 
 <p align="center">
-  <sub><b>Toolkit:</b> <a href="https://github.com/td185721/pe-walker">pe-walker</a> · <b>pe-diff</b> · <a href="https://github.com/td185721/rtti-dump">rtti-dump</a> · <a href="https://github.com/td185721/vtable-dump">vtable-dump</a> · <a href="https://github.com/td185721/pattern-scan">pattern-scan</a> · <a href="https://github.com/td185721/unwind-map">unwind-map</a></sub>
+  <sub><b>Toolkit:</b> <a href="https://github.com/sheranton/pe-walker">pe-walker</a> · <b>pe-diff</b> · <a href="https://github.com/sheranton/rtti-dump">rtti-dump</a> · <a href="https://github.com/sheranton/vtable-dump">vtable-dump</a> · <a href="https://github.com/sheranton/pattern-scan">pattern-scan</a> · <a href="https://github.com/sheranton/unwind-map">unwind-map</a></sub>
 </p>
 
 `pe-diff` compares two Portable Executable files and reports what changed in their structure: headers, sections, imported DLLs and functions, and exports. Byte-level diffs drown in noise from addresses that shift with every rebuild; `pe-diff` shows the changes the loader and the linker care about. It exits non-zero when anything differs, so it can gate a CI pipeline.
@@ -66,7 +66,7 @@ The v2 fixture differs from v1 by one function. pe-diff reports its direct effec
 
 ## Install
 
-Download a prebuilt binary for Windows x64, Linux x64 (statically linked) or macOS arm64 from the [latest release](https://github.com/td185721/pe-diff/releases/latest), or build from source with CMake 3.15+ and any C++17 compiler:
+Download a prebuilt binary for Windows x64, Linux x64 (statically linked) or macOS arm64 from the [latest release](https://github.com/sheranton/pe-diff/releases/latest), or build from source with CMake 3.15+ and any C++17 compiler:
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -118,7 +118,7 @@ Both inputs are parsed with bounds-checked reads; a malformed file is reported w
 
 ## See also
 
-- [pe-walker](https://github.com/td185721/pe-walker) shows the full structure of a single binary.
+- [pe-walker](https://github.com/sheranton/pe-walker) shows the full structure of a single binary.
 
 ## License
 
